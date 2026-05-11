@@ -6,25 +6,34 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 echo 'Checking out source code'
-                git branch: 'main', url: 'https://github.com/devopstraininghub/REALTIMEPROJECT.git'
+
+                git branch: 'main',
+                    credentialsId: 'github',
+                    url: 'https://github.com/Harinath234/REALTIMEPROJECT.git'
             }
         }
 
         stage('Build Jar') {
             steps {
                 echo 'Running Maven build'
-                sh 'cd Application && mvn clean package'
+
+                sh '''
+                    cd Application
+                    mvn clean package
+                '''
             }
         }
 
         stage('Sonar Scan') {
             steps {
                 echo 'Running SonarQube scan'
+
                 sh '''
                     cd Application
+
                     mvn sonar:sonar \
-                      -Dsonar.host.url=http://44.203.120.255:9000 \
-                      -Dsonar.login=squ_857bc378b399cc95305af238a1c3f0e10e243415
+                    -Dsonar.host.url=http://3.238.66.42:9000 \
+                    -Dsonar.login=squ_bdf3e15d2f2b109dbe50a23a8036f1097ddbfcce
                 '''
             }
         }
@@ -32,53 +41,78 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo 'Building Docker Image'
-                    sh 'cd Application && docker build -t devopshubg333/k8s:${BUILD_NUMBER} .'
+
+                    echo 'Building Docker image'
+
+                    sh '''
+                        cd Application
+                        docker build -t harinath93811/cicd:${BUILD_NUMBER} .
+                    '''
                 }
             }
         }
 
         stage('Docker Image Scan') {
             steps {
-                sh 'trivy image devopshubg333/k8s:${BUILD_NUMBER}'
+
+                echo 'Scanning Docker image using Trivy'
+
+                sh '''
+                    trivy image harinath93811/cicd:${BUILD_NUMBER}
+                '''
             }
         }
 
         stage('Push Image to DockerHub') {
             steps {
+
                 script {
+
                     withCredentials([string(credentialsId: 'dockerhub', variable: 'dockerhub')]) {
-                        sh 'echo "${dockerhub}" | docker login -u devopshubg333 --password-stdin'
+
+                        sh '''
+                            docker login -u harinath93811 -p ${dockerhub}
+
+                            docker push harinath93811/cicd:${BUILD_NUMBER}
+                        '''
                     }
-                    sh 'docker push devopshubg333/k8s:${BUILD_NUMBER}'
                 }
             }
         }
 
         stage('Update Kubernetes Deployment Manifest File') {
+
             environment {
                 GIT_REPO_NAME = "REALTIMEPROJECT"
-                GIT_USER_NAME = "devopstraininghub"
+                GIT_USER_NAME = "Harinath234"
             }
-            steps {
-                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-                    sh '''
-                        git config user.email "madhu@gmail.com"
-                        git config user.name "madhu"
 
-                        sed -i "s|k8s:.*|k8s:${BUILD_NUMBER}|g" Ansible/k8s_deployment.yaml
+            steps {
+
+                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+
+                    sh '''
+                        git config user.email "127993674+Harinath234@users.noreply.github.com"
+                        git config user.name "Harinath234"
+
+                        sed -i "s|cicd:.*|cicd:${BUILD_NUMBER}|g" Ansible/k8s_deployment.yaml
 
                         git add .
-                        git commit -m "Update deployment image tag to version ${BUILD_NUMBER}"
-                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+
+                        git commit -m "Update deployment image tag to version ${BUILD_NUMBER}" || true
+
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
                     '''
                 }
             }
         }
 
         stage('K8s Deployment using Ansible') {
+
             steps {
+
                 script {
+
                     ansiblePlaybook(
                         credentialsId: 'ssh',
                         disableHostKeyChecking: true,
